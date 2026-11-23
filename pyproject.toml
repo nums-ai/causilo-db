@@ -1,0 +1,63 @@
+[project]
+name = "causilo-db"
+version = "0.1.0"
+description = "Predict the blank cells of a database column with the hosted Causilo API."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Nums AI Inc.", email = "api@nums.world" }]
+keywords = ["causilo", "tabular", "prediction", "sql", "database", "postgresql", "duckdb", "snowflake", "spark", "databricks"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "causilo-client>=1.0.6",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyarrow>=14",
+    "sqlalchemy>=2.0",
+]
+
+[project.optional-dependencies]
+duckdb = ["duckdb>=1.0"]
+postgres = ["psycopg[binary]>=3.1"]
+mysql = ["pymysql>=1.1"]
+spark = ["pyspark>=3.5"]
+mssql = ["pymssql>=2.3"]
+oracle = ["oracledb>=2.0"]
+clickhouse = ["clickhouse-sqlalchemy>=0.3"]
+trino = ["trino[sqlalchemy]>=0.330"]
+snowflake = ["snowflake-sqlalchemy>=1.6"]
+redshift = ["sqlalchemy-redshift>=0.8", "redshift_connector>=2.1"]
+bigquery = ["sqlalchemy-bigquery>=1.11"]
+dev = ["pytest>=8", "duckdb>=1.0", "psycopg[binary]>=3.1", "pymysql>=1.1"]
+
+[project.urls]
+Homepage = "https://nums.world"
+Documentation = "https://docs.nums.world"
+Source = "https://github.com/nums-ai/causilo-db"
+Issues = "https://github.com/nums-ai/causilo-db/issues"
+Changelog = "https://github.com/nums-ai/causilo-db/blob/main/CHANGELOG.md"
+
+[project.scripts]
+causilo-db = "causilo_db.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["causilo_db*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,8 @@
+include LICENSE README.md CHANGELOG.md SECURITY.md
+graft sql
+graft notebooks
+graft scripts
+graft examples
+graft tests
+graft docker
+global-exclude __pycache__ *.py[cod]
