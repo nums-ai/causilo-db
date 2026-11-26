@@ -48,6 +48,25 @@ class CausiloDBError(Exception):
     """A table that cannot be predicted as asked. The message says why."""
 
 
+class PartialPredictionError(CausiloDBError):
+    """A prediction failed after one or more of its calls were charged.
+
+    Either a call failed after earlier calls had completed, or a call was
+    answered and its answer could not be used. The charged calls' predictions
+    are not returned. The original error is ``__cause__``; ``calls_completed``
+    counts the calls that were charged and ``rows_completed`` the rows they
+    covered, out of ``calls_planned`` and ``n_query``.
+    """
+
+    def __init__(self, message: str, *, calls_completed: int, calls_planned: int,
+                 rows_completed: int, n_query: int) -> None:
+        super().__init__(message)
+        self.calls_completed = calls_completed
+        self.calls_planned = calls_planned
+        self.rows_completed = rows_completed
+        self.n_query = n_query
+
+
 @dataclass
 class Prediction:
     """The predicted rows, and what was done to get them."""
@@ -198,6 +217,12 @@ def predict_frame(
 
     ``exclude`` names columns that are not features, an id for example.
     ``api_key`` defaults to the ``CAUSILO_API_KEY`` environment variable.
+
+    A large table is sent in several calls, each charged. If a call fails
+    after one or more have completed, or an answer comes back that cannot be
+    used, :class:`PartialPredictionError` is raised from the original error and
+    says how many calls were charged; a failure of the first call before the
+    API answers raises the original error.
     """
     if target not in df.columns:
         raise CausiloDBError(f"No column named {target!r}.")
@@ -267,25 +292,51 @@ def predict_frame(
     parts: list[np.ndarray] = []
     classes: list[str] = []
     calls = 0
+    planned = -(-len(query_rows) // chunk)
     for start in range(0, len(query_rows), chunk):
         rows = query_rows[start:start + chunk]
         query = X.iloc[rows].reset_index(drop=True)
         if progress:
             progress(start, len(query_rows))
-        if task == "clf":
-            pred, meta = client.predict_with_metadata(context, query, target=target, model=MODEL_CLF)
-            got = [str(c) for c in meta.get("classes", [])]
-            if classes and got != classes:
-                raise CausiloDBError("The class order changed between calls; run again with fewer rows.")
-            classes = classes or got
-        else:
-            pred, _ = client.predict_with_metadata(context, query, target=target, model=MODEL_REG,
-                                                   output_type="quantiles", quantiles=list(quantiles))
-        m = np.asarray(pred, dtype="float64")
-        if m.ndim == 1:
-            m = m.reshape(len(rows), -1)
-        parts.append(m)
+        try:
+            if task == "clf":
+                pred, meta = client.predict_with_metadata(context, query, target=target, model=MODEL_CLF)
+            else:
+                pred, meta = client.predict_with_metadata(context, query, target=target, model=MODEL_REG,
+                                                          output_type="quantiles", quantiles=list(quantiles))
+        except Exception as exc:
+            if calls == 0:
+                raise
+            # The calls before this one were charged; say so rather than let a
+            # retry of the whole table look free.
+            raise PartialPredictionError(
+                f"Call {calls + 1} of {planned} failed ({type(exc).__name__}: {exc}). "
+                f"The {calls} call{'s' if calls != 1 else ''} before it completed and "
+                f"{'were' if calls != 1 else 'was'} charged ({start:,} of {len(query_rows):,} rows); "
+                "those predictions are not returned.",
+                calls_completed=calls, calls_planned=planned, rows_completed=start, n_query=len(query_rows),
+            ) from exc
+        # The API answered, so this call was charged whatever happens next.
         calls += 1
+        try:
+            if task == "clf":
+                got = [str(c) for c in meta.get("classes", [])]
+                if classes and got != classes:
+                    raise CausiloDBError("The class order changed between calls; run again with fewer rows.")
+                classes = classes or got
+            m = np.asarray(pred, dtype="float64")
+            if m.ndim == 1:
+                m = m.reshape(len(rows), -1)
+        except Exception as exc:
+            done = start + len(rows)
+            raise PartialPredictionError(
+                f"Call {calls} of {planned} was answered, but the answer could not be used "
+                f"({type(exc).__name__}: {exc}). The {calls} call{'s' if calls != 1 else ''} up to and "
+                f"including it {'were' if calls != 1 else 'was'} charged ({done:,} of {len(query_rows):,} rows); "
+                "no predictions are returned.",
+                calls_completed=calls, calls_planned=planned, rows_completed=done, n_query=len(query_rows),
+            ) from exc
+        parts.append(m)
     matrix = np.vstack(parts)
 
     out = pd.DataFrame({"row_number": query_rows.astype("int64")})

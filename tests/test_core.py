@@ -136,3 +136,79 @@ def test_a_text_target_with_too_many_values_is_refused_unless_asked():
     big.loc[big.index % 10 == 0, "name"] = None
     with pytest.raises(CausiloDBError, match="distinct values"):
         predict_frame(big, "name", client=FakeCausilo())
+
+
+def test_a_later_call_failing_says_how_many_calls_were_charged(monkeypatch):
+    monkeypatch.setattr(core, "MAX_CELLS_PER_CALL", 3 * 50)
+
+    class ThirdFails(FakeCausilo):
+        def predict_with_metadata(self, *a, **k):
+            if len(self.calls) == 2:
+                raise RuntimeError("connection reset")
+            return super().predict_with_metadata(*a, **k)
+
+    with pytest.raises(core.PartialPredictionError) as info:
+        predict_frame(table(n=200, blank_from=20), "strength", client=ThirdFails(), exclude=["churn"])
+    err = info.value
+    assert isinstance(err, CausiloDBError) and isinstance(err.__cause__, RuntimeError)
+    assert err.calls_completed == 2 and err.calls_planned > 2 and 0 < err.rows_completed < err.n_query == 180
+    assert "Call 3 of" in str(err) and "2 calls before it completed and were charged" in str(err)
+
+
+def test_a_first_call_failing_raises_the_original_error(monkeypatch):
+    monkeypatch.setattr(core, "MAX_CELLS_PER_CALL", 3 * 50)
+
+    class Fails(FakeCausilo):
+        def predict_with_metadata(self, *a, **k):
+            raise RuntimeError("connection reset")
+
+    with pytest.raises(RuntimeError, match="connection reset"):
+        predict_frame(table(n=200, blank_from=20), "strength", client=Fails(), exclude=["churn"])
+
+
+def test_an_unusable_answer_counts_its_call_as_charged(monkeypatch):
+    monkeypatch.setattr(core, "MAX_CELLS_PER_CALL", 3 * 50)
+
+    class ThirdMisshapen(FakeCausilo):
+        def predict_with_metadata(self, *a, **k):
+            pred, meta = super().predict_with_metadata(*a, **k)
+            if len(self.calls) == 3:
+                return np.zeros(7), meta  # cannot be one row per query row
+            return pred, meta
+
+    with pytest.raises(core.PartialPredictionError) as info:
+        predict_frame(table(n=200, blank_from=20), "strength", client=ThirdMisshapen(), exclude=["churn"])
+    err = info.value
+    assert err.calls_completed == 3 and isinstance(err.__cause__, ValueError)
+    assert "Call 3 of" in str(err) and "3 calls up to and including it were charged" in str(err)
+
+
+def test_an_unusable_first_answer_is_reported_as_charged(monkeypatch):
+    monkeypatch.setattr(core, "MAX_CELLS_PER_CALL", 3 * 50)
+
+    class Misshapen(FakeCausilo):
+        def predict_with_metadata(self, *a, **k):
+            _, meta = super().predict_with_metadata(*a, **k)
+            return np.zeros(7), meta
+
+    with pytest.raises(core.PartialPredictionError) as info:
+        predict_frame(table(n=200, blank_from=20), "strength", client=Misshapen(), exclude=["churn"])
+    err = info.value
+    assert err.calls_completed == 1 and err.rows_completed > 0
+    assert "Call 1 of" in str(err) and "1 call up to and including it was charged" in str(err)
+
+
+def test_a_changed_class_order_counts_the_call_that_returned_it(monkeypatch):
+    monkeypatch.setattr(core, "MAX_CELLS_PER_CALL", 3 * 50)
+
+    class Reorders(FakeCausilo):
+        def predict_with_metadata(self, *a, **k):
+            pred, meta = super().predict_with_metadata(*a, **k)
+            if len(self.calls) == 2:
+                meta = {"classes": list(reversed(meta["classes"]))}
+            return pred, meta
+
+    df = table(n=200, blank_from=20)
+    with pytest.raises(core.PartialPredictionError, match="class order changed") as info:
+        predict_frame(df, "churn", client=Reorders(), exclude=["strength"], task="clf")
+    assert info.value.calls_completed == 2

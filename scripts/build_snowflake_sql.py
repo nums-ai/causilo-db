@@ -90,7 +90,8 @@ $$;
 '''
 
 
-def main() -> None:
+def core_source() -> str:
+    """causilo_db/core.py without its module docstring, ready to sit between $$ marks."""
     core = (ROOT / "causilo_db" / "core.py").read_text()
     tree = ast.parse(core)
     first = tree.body[0]
@@ -98,7 +99,16 @@ def main() -> None:
         core = "\n".join(core.splitlines()[first.end_lineno:]).lstrip("\n")
     if "$$" in core:
         raise SystemExit("core.py contains $$, which would end the procedure body")
-    out = HEAD + core.rstrip("\n") + TAIL
+    return core.rstrip("\n")
+
+
+def render() -> str:
+    """The text of sql/snowflake/install.sql."""
+    return HEAD + core_source() + TAIL
+
+
+def main() -> None:
+    out = render()
     (ROOT / "sql" / "snowflake" / "install.sql").write_text(out)
     print(f"wrote sql/snowflake/install.sql ({len(out):,} bytes)")
 

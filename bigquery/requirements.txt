@@ -1,0 +1,3 @@
+# The service's own dependencies; causilo-db itself is installed from this repository.
+google-cloud-bigquery[pandas]>=3.20
+gunicorn>=22

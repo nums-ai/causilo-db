@@ -1,8 +1,10 @@
 include LICENSE README.md CHANGELOG.md SECURITY.md
 graft sql
+graft snowflake
 graft notebooks
 graft scripts
 graft examples
 graft tests
 graft docker
+graft bigquery
 global-exclude __pycache__ *.py[cod]

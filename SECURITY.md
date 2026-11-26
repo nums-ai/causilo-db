@@ -24,5 +24,9 @@ fix is released. Only the latest release receives security fixes.
   with statement logging on, in the server log.
 - Snowflake: the procedure runs with the caller's rights. Every role granted
   USAGE on it spends the key held in the `CAUSILO.API_KEY` secret.
+- Snowflake Native App: `CORE.PREDICT` runs with the app's rights and reads
+  every table granted to the app, so every role granted `APP_USER` or
+  `APP_ADMIN` can predict from those tables and spends the key held in the
+  app's `CAUSILO_API_KEY` configuration.
 - The `CAUSILO_ENDPOINT` environment variable sends calls, and the key, to
   another host. Leave it unset in production.

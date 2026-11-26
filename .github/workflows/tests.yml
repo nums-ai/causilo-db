@@ -30,3 +30,7 @@ jobs:
         run: |
           python scripts/build_snowflake_sql.py
           git diff --exit-code sql/snowflake/install.sql
+      - name: Snowflake Native App matches the core
+        run: |
+          python scripts/build_snowflake_app.py
+          git diff --exit-code snowflake/native_app/

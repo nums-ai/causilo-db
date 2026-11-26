@@ -1,6 +1,6 @@
 [project]
 name = "causilo-db"
-version = "0.1.0"
+version = "0.2.0"
 description = "Predict the blank cells of a database column with the hosted Causilo API."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,7 +40,7 @@ trino = ["trino[sqlalchemy]>=0.330"]
 snowflake = ["snowflake-sqlalchemy>=1.6"]
 redshift = ["sqlalchemy-redshift>=0.8", "redshift_connector>=2.1"]
 bigquery = ["sqlalchemy-bigquery>=1.11"]
-dev = ["pytest>=8", "duckdb>=1.0", "psycopg[binary]>=3.1", "pymysql>=1.1"]
+dev = ["pytest>=8", "duckdb>=1.0", "psycopg[binary]>=3.1", "pymysql>=1.1", "pyyaml>=6"]
 
 [project.urls]
 Homepage = "https://nums.world"

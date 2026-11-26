@@ -2,8 +2,9 @@
 --
 -- Needs PL/Python (plpython3u) and, in the Python the server runs, the
 -- causilo-db package:  pip install causilo-db  (as the server's Python).
--- Managed services that do not offer plpython3u (RDS, Cloud SQL, Azure) use
--- the causilo-db command or Python package from outside instead.
+-- Where plpython3u is not allowed but the http extension is (Supabase, for
+-- one), use install_http.sql instead; elsewhere (RDS, Aurora, Cloud SQL,
+-- AlloyDB, Azure) run the causilo-db command or Python package from outside.
 --
 -- The key is per session and never stored in a table:
 --   SET causilo.api_key = 'csl_...';

@@ -1,0 +1,8 @@
+# Builds bigquery/Dockerfile from the repository root, for deploy.sh.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "bigquery/Dockerfile", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
+options:
+  # A build with its own service account must say where its logs go.
+  logging: CLOUD_LOGGING_ONLY

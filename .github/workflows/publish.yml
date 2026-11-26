@@ -1,0 +1,99 @@
+# Build, check and (on request) publish causilo-db to PyPI.
+#
+# No API token anywhere: PyPI trusts this repository, this workflow file and
+# the `pypi` environment (trusted publishing) and hands out a short-lived
+# credential per run. Publishing is a manual dispatch with `publish` set, from
+# main only, after the build job has installed the wheel into a clean
+# interpreter, imported it and scanned every published file for keys.
+
+name: publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the validated distributions to PyPI
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publication
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build and check distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Install the wheel into a clean interpreter and scan what ships
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet dist/*.whl
+          /tmp/clean/bin/python - <<'PY'
+          import glob, importlib.metadata as md, re, tarfile, zipfile
+          import causilo_db
+          assert md.version("causilo-db") == causilo_db.__version__
+          whl = glob.glob("dist/*.whl")[0]
+          tops = {n.split("/")[0] for n in zipfile.ZipFile(whl).namelist()
+                  if "/" in n and not n.split("/")[0].endswith(".dist-info")}
+          assert tops == {"causilo_db"}, tops
+          # Keys must not ship: cloud access key ids and Causilo API keys.
+          PATTERN = re.compile(r"AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|csl_[A-Za-z0-9_-]{20,}")
+          for probe in ("AKIAIOSFODNN7EXAMPLE", "csl_abcdefghijklmnopqrstuvwxyz"):
+              assert PATTERN.search(probe), probe
+          for benign in ("export CAUSILO_API_KEY=csl_...", "https://nums.world"):
+              assert not PATTERN.search(benign), benign
+          BINARY = (".pyc", ".png", ".jpg", ".gif", ".pdf", ".zip", ".gz", ".whl")
+          leaks, scanned = [], 0
+          for path in sorted(glob.glob("dist/*")):
+              if path.endswith(".whl"):
+                  with zipfile.ZipFile(path) as z:
+                      members = [(n, z.read(n)) for n in z.namelist()
+                                 if not n.endswith("/") and not n.lower().endswith(BINARY)]
+              else:
+                  with tarfile.open(path) as tf:
+                      members = [(m.name, tf.extractfile(m).read()) for m in tf.getmembers()
+                                 if m.isfile() and not m.name.lower().endswith(BINARY)]
+              assert members, path
+              scanned += len(members)
+              for name, blob in members:
+                  found = PATTERN.findall(blob.decode("utf-8", "replace"))
+                  if found:
+                      leaks.append((path, name, sorted(set(found))))
+          assert not leaks, leaks
+          print("causilo-db", causilo_db.__version__, "ok;", scanned, "files scanned")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/causilo-db
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
